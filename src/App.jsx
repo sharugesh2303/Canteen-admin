@@ -3,7 +3,9 @@
  * ================================== */
 
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom'; 
+import { Routes, Route, Navigate } from 'react-router-dom';
+
+/* ===== ADMIN AUTH PAGES ===== */
 import AdminLoginPage from './pages/AdminLoginPage.jsx';
 import AdminDashboardPage from './pages/AdminDashboardPage.jsx';
 import OrdersPage from './pages/OrdersPage.jsx';
@@ -11,59 +13,108 @@ import RevenuePage from './pages/RevenuePage.jsx';
 import AdminFeedbackPage from './pages/AdminFeedbackPage.jsx';
 import AdminAdvertisementPage from './pages/AdminAdvertisementPage.jsx';
 
-// --- 1. IMPORT YOUR NEW FORM PAGE ---
+/* ===== MENU FORM ===== */
 import AdminMenuFormPage from './pages/AdminMenuFormPage.jsx';
 
-// Helper component to protect admin routes
+/* ===== ✅ NEW OFFERS PAGE ===== */
+import AdminOffersPage from './pages/AdminOffersPage.jsx';
+
+/* ===== PROTECTED ROUTE ===== */
 const AdminProtectedRoute = ({ children }) => {
-    const token = localStorage.getItem('admin_token');
-    return token ? children : <Navigate to="/login" />;
+  const token = localStorage.getItem('admin_token');
+  return token ? children : <Navigate to="/login" />;
 };
 
 function App() {
-    return (
-        <Routes>
-            <Route path="/" element={<Navigate to="/login" />} />
-            <Route path="/login" element={<AdminLoginPage />} />
+  return (
+    <Routes>
+      {/* ===== DEFAULT ===== */}
+      <Route path="/" element={<Navigate to="/login" />} />
+      <Route path="/login" element={<AdminLoginPage />} />
 
-            <Route 
-                path="/menu" 
-                element={<AdminProtectedRoute><AdminDashboardPage /></AdminProtectedRoute>} 
-            />
-            
-            {/* --- 2. ADD THE NEW ROUTES FOR THE FORM PAGE --- */}
-            <Route 
-                path="/admin/menu/add" 
-                element={<AdminProtectedRoute><AdminMenuFormPage /></AdminProtectedRoute>} 
-            />
-            <Route 
-                path="/admin/menu/edit/:id" 
-                element={<AdminProtectedRoute><AdminMenuFormPage /></AdminProtectedRoute>} 
-            />
-            {/* --- END OF NEW ROUTES --- */}
+      {/* ===== ADMIN DASHBOARD ===== */}
+      <Route
+        path="/menu"
+        element={
+          <AdminProtectedRoute>
+            <AdminDashboardPage />
+          </AdminProtectedRoute>
+        }
+      />
 
-            <Route 
-                path="/orders" 
-                element={<AdminProtectedRoute><OrdersPage /></AdminProtectedRoute>} 
-            />
+      {/* ===== MENU CREATE / EDIT ===== */}
+      <Route
+        path="/admin/menu/add"
+        element={
+          <AdminProtectedRoute>
+            <AdminMenuFormPage />
+          </AdminProtectedRoute>
+        }
+      />
 
-            <Route 
-                path="/revenue" 
-                element={<AdminProtectedRoute><RevenuePage /></AdminProtectedRoute>} 
-            />
+      <Route
+        path="/admin/menu/edit/:id"
+        element={
+          <AdminProtectedRoute>
+            <AdminMenuFormPage />
+          </AdminProtectedRoute>
+        }
+      />
 
-            <Route 
-                path="/feedback" 
-                element={<AdminProtectedRoute><AdminFeedbackPage /></AdminProtectedRoute>} 
-            />
-            <Route 
-                path="/advertisement" 
-                element={<AdminProtectedRoute><AdminAdvertisementPage /></AdminProtectedRoute>} 
-            />
+      {/* ===== ✅ OFFERS MANAGEMENT ===== */}
+      <Route
+        path="/admin/offers"
+        element={
+          <AdminProtectedRoute>
+            <AdminOffersPage />
+          </AdminProtectedRoute>
+        }
+      />
 
-            <Route path="/dashboard" element={<Navigate to="/menu" />} />
-        </Routes>
-    );
+      {/* ===== ORDERS ===== */}
+      <Route
+        path="/orders"
+        element={
+          <AdminProtectedRoute>
+            <OrdersPage />
+          </AdminProtectedRoute>
+        }
+      />
+
+      {/* ===== REVENUE ===== */}
+      <Route
+        path="/revenue"
+        element={
+          <AdminProtectedRoute>
+            <RevenuePage />
+          </AdminProtectedRoute>
+        }
+      />
+
+      {/* ===== FEEDBACK ===== */}
+      <Route
+        path="/feedback"
+        element={
+          <AdminProtectedRoute>
+            <AdminFeedbackPage />
+          </AdminProtectedRoute>
+        }
+      />
+
+      {/* ===== ADS ===== */}
+      <Route
+        path="/advertisement"
+        element={
+          <AdminProtectedRoute>
+            <AdminAdvertisementPage />
+          </AdminProtectedRoute>
+        }
+      />
+
+      {/* ===== FALLBACK ===== */}
+      <Route path="/dashboard" element={<Navigate to="/menu" />} />
+    </Routes>
+  );
 }
 
 export default App;
