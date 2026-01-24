@@ -1,4 +1,6 @@
+# ==============================
 # Logs
+# ==============================
 logs
 *.log
 npm-debug.log*
@@ -7,18 +9,61 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# ==============================
+# Runtime data
+# ==============================
+pids
+*.pid
+*.seed
+*.pid.lock
 
+# ==============================
+# Dependency directories
+# ==============================
+node_modules/
+
+# ==============================
+# Build outputs
+# ==============================
+dist/
+dist-ssr/
+build/
+coverage/
+
+# ==============================
+# Environment files (SECRETS)
+# ==============================
+.env
+.env.*
+!.env.example
+
+# ==============================
+# Firebase / Google Service Keys 🚨
+# ==============================
+*-fcm-key.json
+*service-account*.json
+firebase-adminsdk*.json
+jj-canteen-fcm-key.json
+
+# ==============================
+# OS generated files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
 # Editor directories and files
+# ==============================
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# ==============================
+# Misc
+# ==============================
+*.local
