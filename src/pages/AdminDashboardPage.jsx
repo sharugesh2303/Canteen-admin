@@ -26,7 +26,7 @@ import {
 } from 'react-icons/fa'; 
 import AdminMenuItemCard from '../components/AdminMenuItemCard.jsx'; 
 
-/* ================= API CONFIG ================= */
+/* ================= API CONFIG ================ */
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10000/api';
 const API_ROOT_URL = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace("/api", "") : 'http://localhost:10000');
 const POLLING_INTERVAL = 15 * 1000; 
