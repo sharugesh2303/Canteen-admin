@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
 /* ================= ICONS ================= */
-import { LuLogOut, LuMenu, LuX } from 'react-icons/lu'; 
+import { LuLogOut, LuMenu, LuX, LuStore, LuCoffee } from 'react-icons/lu'; 
 import { VscFeedback } from "react-icons/vsc";
 import { MdCampaign, MdLocalOffer, MdFastfood, MdEdit } from "react-icons/md"; 
 import { 
@@ -29,11 +29,9 @@ const getFullImageUrl = (imagePath) => {
     return `${API_ROOT_URL}/uploads/${imagePath}`;
 };
 
-// ✅ Helper to check if offer is expired
 const isOfferExpired = (endDate, endTime) => {
     if (!endDate) return false;
     const now = new Date();
-    // Combine date and time strings for accurate comparison
     const expiryString = `${endDate.slice(0, 10)}T${endTime || '23:59:59'}`;
     const expiryDate = new Date(expiryString);
     return now > expiryDate;
@@ -52,16 +50,15 @@ const SparkleOverlay = () => {
         };
         return <div key={i} className="spark" style={style}></div>;
     });
-
     return (
-        <>
+        <div className="sparkle-container">
             <style>{`
                 @keyframes sparkle-animation { 0% { transform: scale(0) translate(0, 0); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(1) translate(var(--x), var(--y)); opacity: 0; } }
                 .sparkle-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
                 .spark { position: absolute; top: 50%; left: 50%; width: var(--size); height: var(--size); background-color: #fbbF24; border-radius: 50%; animation: sparkle-animation var(--duration) var(--delay) infinite linear; box-shadow: 0 0 4px #fbbF24, 0 0 8px #fbbF24; }
             `}</style>
-            <div className="sparkle-container">{sparks}</div>
-        </>
+            {sparks}
+        </div>
     );
 };
 
@@ -81,7 +78,7 @@ const RealTimeClock = () => {
     );
 };
 
-const AdminSidebarNav = ({ onClose }) => {
+const AdminSidebarNav = ({ onClose, serviceMode }) => {
     const navigate = useNavigate();
     const NavItem = ({ to, icon: Icon, name, isActive = false }) => (
         <Link to={to} className="block w-full" onClick={onClose}>
@@ -104,10 +101,10 @@ const AdminSidebarNav = ({ onClose }) => {
             <NavItem to="/feedback" icon={VscFeedback} name="Student Feedback" />
             <NavItem to="/advertisement" icon={MdCampaign} name="Ads Management" />
             <div className="pt-4 border-t border-slate-700 mt-4">
-                <button onClick={() => { navigate('/admin/menu/add'); onClose(); }} 
+                <button onClick={() => { navigate(`/admin/menu/add?location=${serviceMode}`); onClose(); }} 
                         className="w-full flex items-center p-3 rounded-lg transition-colors duration-200 space-x-3 text-left bg-green-600 text-white hover:bg-green-700 shadow-md">
                     <FaPlusCircle size={20} className="flex-shrink-0" />
-                    <span className="font-bold">Add New Menu Item</span>
+                    <span className="font-bold">Add New Item</span>
                 </button>
             </div>
         </div>
@@ -118,6 +115,10 @@ const AdminSidebarNav = ({ onClose }) => {
 const AdminOffersPage = () => {
     const navigate = useNavigate();
     const token = localStorage.getItem("admin_token");
+    
+    // 🟢 Read persistent serviceMode
+    const [serviceMode, setServiceMode] = useState(localStorage.getItem('admin_service_mode') || 'canteen');
+    
     const headers = useMemo(() => getAdminAuthHeaders(token), [token]);
 
     const [offers, setOffers] = useState([]);
@@ -143,16 +144,23 @@ const AdminOffersPage = () => {
         navigate('/login'); 
     }, [navigate]);
 
+    // 🟢 Save and switch modes
+    const handleModeChange = (newMode) => {
+        setServiceMode(newMode);
+        localStorage.setItem('admin_service_mode', newMode);
+        resetForm();
+    };
+
     const fetchOffers = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/admin/offers`, { headers });
+            const res = await axios.get(`${API_BASE_URL}/admin/offers?mode=${serviceMode}`, { headers });
             setOffers(res.data);
         } catch (err) { console.error("Error fetching offers", err); }
     };
 
     const fetchMenuItems = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/admin/menu`, { headers });
+            const res = await axios.get(`${API_BASE_URL}/admin/menu?mode=${serviceMode}`, { headers });
             setMenuItems(res.data || []);
         } catch (err) { console.error("Error fetching menu", err); }
         finally { setLoading(false); }
@@ -162,7 +170,7 @@ const AdminOffersPage = () => {
         if (!token) return handleLogout();
         fetchOffers();
         fetchMenuItems();
-    }, [token, handleLogout]);
+    }, [token, handleLogout, serviceMode]);
 
     /* ================= DERIVED LOGIC ================= */
     const availableCategories = useMemo(() => {
@@ -258,16 +266,25 @@ const AdminOffersPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            // ✅ PERSISTENCE FIX: Ensure location is sent so it saves in the right shop
+            const offerPayload = {
+                ...form,
+                location: serviceMode 
+            };
+
             if (editingId) {
-                await axios.put(`${API_BASE_URL}/admin/offers/${editingId}`, form, { headers });
+                await axios.put(`${API_BASE_URL}/admin/offers/${editingId}`, offerPayload, { headers });
                 alert("Offer Updated Successfully!");
             } else {
-                await axios.post(`${API_BASE_URL}/admin/offers`, form, { headers });
+                await axios.post(`${API_BASE_URL}/admin/offers`, offerPayload, { headers });
                 alert("Offer Created Successfully!");
             }
             fetchOffers();
             resetForm();
-        } catch (err) { alert("Failed to save offer."); }
+        } catch (err) { 
+            console.error("Save error:", err.response?.data);
+            alert("Failed to save offer."); 
+        }
     };
 
     const deleteOffer = async (id) => {
@@ -290,41 +307,64 @@ const AdminOffersPage = () => {
                         <h3 className="text-xl font-bold text-orange-400">Admin Menu</h3>
                         <button onClick={() => setIsDrawerOpen(false)}><LuX size={24} className="text-white"/></button>
                     </div>
-                    <AdminSidebarNav onClose={() => setIsDrawerOpen(false)} />
+                    <AdminSidebarNav onClose={() => setIsDrawerOpen(false)} serviceMode={serviceMode} />
                 </div>
             </div>
 
             {/* Desktop Sidebar */}
             <aside className="hidden md:block w-64 bg-slate-800 border-r border-slate-700 sticky top-0 h-screen overflow-y-auto z-20">
-                <div className="p-6"><h1 className="text-2xl font-extrabold text-orange-400">Admin Portal</h1></div>
-                <AdminSidebarNav onClose={() => { }} />
+                <div className="p-6">
+                    <h1 className="text-2xl font-extrabold text-orange-400">Admin Portal</h1>
+                    <div className={`mt-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest text-center uppercase border ${serviceMode === 'canteen' ? 'border-orange-500 text-orange-400 bg-orange-500/10' : 'border-blue-500 text-blue-400 bg-blue-500/10'}`}>
+                        {serviceMode} Mode
+                    </div>
+                </div>
+                <AdminSidebarNav onClose={() => { }} serviceMode={serviceMode} />
             </aside>
 
             <div className="flex-grow relative z-10">
-                <header className="bg-gray-900 text-white p-4 flex justify-between items-center sticky top-0 z-30 border-b border-slate-700">
+                <header className="bg-gray-900 text-white p-4 flex justify-between items-center sticky top-0 z-30 border-b border-slate-700 shadow-lg">
                     <div className="flex items-center space-x-3">
                         <button className="md:hidden" onClick={() => setIsDrawerOpen(true)}><LuMenu size={24} /></button>
-                        <div className="text-xl font-extrabold text-orange-400">JJ College Smart Canteen</div>
+                        <div className="text-xl font-extrabold text-orange-400 italic uppercase">JJ SMART DASHBOARD</div>
                     </div>
-                    <button onClick={handleLogout} className="bg-red-600 font-semibold py-2 px-4 rounded-lg flex items-center space-x-2 hover:bg-red-700 transition-all">
-                        <LuLogOut size={18} /><span>Log Out</span>
-                    </button>
+
+                    <div className="flex items-center space-x-4">
+                        <div className="flex items-center bg-slate-800 rounded-full p-1 border border-slate-700 shadow-inner">
+                            <button 
+                                onClick={() => handleModeChange('canteen')}
+                                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black transition-all duration-300 ${serviceMode === 'canteen' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                <LuStore size={14} /> CANTEEN
+                            </button>
+                            <button 
+                                onClick={() => handleModeChange('cafeteria')}
+                                className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black transition-all duration-300 ${serviceMode === 'cafeteria' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                <LuCoffee size={14} /> CAFETERIA
+                            </button>
+                        </div>
+                        
+                        <button onClick={handleLogout} className="bg-red-600 font-semibold py-2 px-4 rounded-lg flex items-center space-x-2 hover:bg-red-700 transition-all">
+                            <LuLogOut size={18} /><span>Log Out</span>
+                        </button>
+                    </div>
                 </header>
 
                 <RealTimeClock />
 
                 <main className="container mx-auto p-4 md:p-8">
-                    <div className="w-full h-32 md:h-48 mb-8 rounded-2xl bg-slate-800/50 flex flex-col items-center justify-center border border-slate-700 shadow-2xl backdrop-blur-sm">
-                        <MdLocalOffer className="text-orange-400 text-6xl mb-2 drop-shadow-[0_0_10px_rgba(251,191,36,0.4)]" />
-                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Offers & Discounts</h2>
+                    <div className={`w-full h-32 md:h-48 mb-8 rounded-2xl flex flex-col items-center justify-center border shadow-2xl backdrop-blur-sm transition-all duration-500 ${serviceMode === 'canteen' ? 'bg-orange-900/10 border-orange-500/30' : 'bg-blue-900/10 border-blue-500/30'}`}>
+                        <MdLocalOffer className={`${serviceMode === 'canteen' ? 'text-orange-400' : 'text-blue-400'} text-6xl mb-2 drop-shadow-[0_0_10px_rgba(251,191,36,0.4)]`} />
+                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Offers: {serviceMode}</h2>
                     </div>
 
                     <div className="grid lg:grid-cols-3 gap-8">
                         {/* LEFT COLUMN: FORM */}
                         <div className="lg:col-span-1">
-                            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-2xl sticky top-24">
+                            <div className={`bg-slate-800 border-slate-700 border rounded-2xl p-6 shadow-2xl sticky top-24 border-t-4 ${serviceMode === 'canteen' ? 'border-t-orange-500' : 'border-t-blue-500'}`}>
                                 <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-xl font-bold text-orange-400 flex items-center gap-2">
+                                    <h3 className={`text-xl font-bold flex items-center gap-2 ${serviceMode === 'canteen' ? 'text-orange-400' : 'text-blue-400'}`}>
                                         {editingId ? <><MdEdit /> Edit Campaign</> : <><FaPlusCircle /> New Campaign</>}
                                     </h3>
                                     {editingId && (
@@ -336,27 +376,12 @@ const AdminOffersPage = () => {
                                 <form onSubmit={handleSubmit} className="space-y-5">
                                     <div>
                                         <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">Offer Name</label>
-                                        <input
-                                            placeholder="e.g. Weekend Special"
-                                            className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                            value={form.name}
-                                            onChange={(e) => setForm({ ...form, name: e.target.value })}
-                                            required
-                                        />
+                                        <input placeholder="e.g. Weekend Special" className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none focus:ring-2 focus:ring-orange-500 transition-all" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                                     </div>
-
                                     <div>
                                         <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1">Discount (%)</label>
-                                        <input
-                                            type="number"
-                                            placeholder="10"
-                                            className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                            value={form.discountPercentage}
-                                            onChange={(e) => setForm({ ...form, discountPercentage: e.target.value })}
-                                            required
-                                        />
+                                        <input type="number" placeholder="10" className="w-full p-3 rounded-lg bg-slate-900 border border-slate-700 text-white outline-none focus:ring-2 focus:ring-orange-500 transition-all" value={form.discountPercentage} onChange={(e) => setForm({ ...form, discountPercentage: e.target.value })} required />
                                     </div>
-
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs font-bold text-slate-300 uppercase block mb-1">Start Date</label>
@@ -367,7 +392,6 @@ const AdminOffersPage = () => {
                                             <input type="date" className="w-full p-3 bg-slate-900 rounded-lg border border-slate-700 text-sm text-white" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} required />
                                         </div>
                                     </div>
-
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-xs font-bold text-slate-300 uppercase block mb-1">Start Time</label>
@@ -378,181 +402,96 @@ const AdminOffersPage = () => {
                                             <input type="time" className="w-full p-3 bg-slate-900 rounded-lg border border-slate-700 text-sm text-white" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} required />
                                         </div>
                                     </div>
-
                                     <div>
                                         <label className="text-xs font-bold text-slate-300 uppercase mb-3 block">Category Selection Filter</label>
                                         <div className="flex flex-wrap gap-2">
                                             {availableCategories.map((cat) => (
-                                                <button
-                                                    key={cat} type="button"
-                                                    onClick={() => toggleCategoryFilter(cat)}
-                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                                                        form.applicableCategories.includes(cat) ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-                                                    }`}
-                                                >
-                                                    {cat}
-                                                </button>
+                                                <button key={cat} type="button" onClick={() => toggleCategoryFilter(cat)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${form.applicableCategories.includes(cat) ? (serviceMode === 'canteen' ? 'bg-orange-600 border-orange-500' : 'bg-blue-600 border-blue-500') + ' text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>{cat}</button>
                                             ))}
                                         </div>
-                                        <p className="text-[10px] text-slate-500 mt-2 font-medium italic">* Filter products shown on the right</p>
                                     </div>
-
-                                    <button className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-4 rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-2">
+                                    <button className={`w-full text-white font-black py-4 rounded-xl shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-2 ${serviceMode === 'canteen' ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
                                         {editingId ? <><MdEdit /> UPDATE CAMPAIGN</> : <><FaPlusCircle /> LAUNCH CAMPAIGN</>}
                                     </button>
                                 </form>
                             </div>
                         </div>
 
-                        {/* RIGHT COLUMN: CATEGORY-SPLIT ITEM SELECTION */}
+                        {/* RIGHT COLUMN: SELECTION */}
                         <div className="lg:col-span-2 space-y-8">
                             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl">
                                 <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                                    <FaUtensils className="text-orange-400"/> Pick Products
+                                    <FaUtensils className={serviceMode === 'canteen' ? 'text-orange-400' : 'text-blue-400'}/> Pick {serviceMode} Products
                                 </h3>
                                 <div className="relative mb-6">
                                     <FaSearch className="absolute left-4 top-4 text-slate-500" />
-                                    <input
-                                        placeholder="Search by product name..."
-                                        className="w-full p-4 pl-12 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-                                        value={itemSearch}
-                                        onChange={(e) => setItemSearch(e.target.value)}
-                                    />
+                                    <input placeholder="Search products..." className="w-full p-4 pl-12 rounded-xl bg-slate-900 border border-slate-700 text-white outline-none focus:ring-2 focus:ring-orange-500 transition-all" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
                                 </div>
-
                                 <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar space-y-8">
-                                    {Object.keys(groupedFilteredItems).length > 0 ? (
-                                        Object.keys(groupedFilteredItems).sort().map(categoryName => {
-                                            const categoryProducts = groupedFilteredItems[categoryName];
-                                            const allInCategorySelected = categoryProducts.every(p => form.applicableItems.includes(p._id));
-
-                                            return (
-                                                <div key={categoryName} className="space-y-4">
-                                                    <div className="flex justify-between items-center bg-slate-700/30 p-3 rounded-xl border-l-4 border-orange-500">
-                                                        <h4 className="text-lg font-black text-orange-400 uppercase tracking-widest flex items-center gap-2">
-                                                            <FaListUl size={16}/> {categoryName} ({categoryProducts.length})
-                                                        </h4>
-                                                        <button 
-                                                            type="button"
-                                                            onClick={() => toggleSelectAllInCategory(categoryProducts)}
-                                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
-                                                                allInCategorySelected ? 'bg-orange-500 border-orange-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-white'
-                                                            }`}
-                                                        >
-                                                            <div className={`w-4 h-4 rounded flex items-center justify-center border ${allInCategorySelected ? 'bg-white border-white' : 'border-slate-500'}`}>
-                                                                {allInCategorySelected && <FaCheck size={10} className="text-orange-500"/>}
-                                                            </div>
-                                                            {allInCategorySelected ? 'Deselect All' : 'Select All Items'}
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        {categoryProducts.map((item) => (
-                                                            <div 
-                                                                key={item._id} 
-                                                                onClick={() => toggleItem(item._id)}
-                                                                className={`p-4 rounded-xl border-2 cursor-pointer flex justify-between items-center transition-all ${
-                                                                    isItemSelected(item._id) ? 'border-orange-500 bg-orange-500/10' : 'border-slate-700 bg-slate-900 hover:border-slate-500'
-                                                                }`}
-                                                            >
-                                                                <div className="flex items-center gap-4">
-                                                                    <div className={`w-5 h-5 rounded flex items-center justify-center transition-all border-2 ${isItemSelected(item._id) ? 'bg-orange-500 border-orange-500' : 'border-slate-600'}`}>
-                                                                        {isItemSelected(item._id) && <FaCheck className="text-white text-[10px]" />}
-                                                                    </div>
-                                                                    <img 
-                                                                        src={getFullImageUrl(item.imageUrl)} 
-                                                                        alt={item.name} 
-                                                                        className="w-10 h-10 object-cover rounded-lg border border-slate-600"
-                                                                    />
-                                                                    <span className="text-sm font-bold text-white">{item.name}</span>
-                                                                </div>
-                                                                <div className="text-right">
-                                                                    <p className="text-[10px] line-through text-slate-500 font-bold">₹{item.price}</p>
-                                                                    <p className="text-sm text-green-400 font-black">₹{getDiscountedPrice(item.price)}</p>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                    {Object.keys(groupedFilteredItems).sort().map(categoryName => {
+                                        const categoryProducts = groupedFilteredItems[categoryName];
+                                        const allSelected = categoryProducts.every(p => form.applicableItems.includes(p._id));
+                                        return (
+                                            <div key={categoryName} className="space-y-4">
+                                                <div className={`flex justify-between items-center bg-slate-700/30 p-3 rounded-xl border-l-4 ${serviceMode === 'canteen' ? 'border-orange-500' : 'border-blue-500'}`}>
+                                                    <h4 className={`text-lg font-black uppercase flex items-center gap-2 ${serviceMode === 'canteen' ? 'text-orange-400' : 'text-blue-400'}`}>
+                                                        <FaListUl size={16}/> {categoryName}
+                                                    </h4>
+                                                    <button type="button" onClick={() => toggleSelectAllInCategory(categoryProducts)} className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all ${allSelected ? (serviceMode === 'canteen' ? 'bg-orange-500' : 'bg-blue-600') + ' text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>Select All</button>
                                                 </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="text-center py-10 text-slate-500 font-bold italic">No products found matching your search.</div>
-                                    )}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    {categoryProducts.map((item) => (
+                                                        <div key={item._id} onClick={() => toggleItem(item._id)} className={`p-4 rounded-xl border-2 cursor-pointer flex justify-between items-center transition-all ${isItemSelected(item._id) ? (serviceMode === 'canteen' ? 'border-orange-500 bg-orange-500/10' : 'border-blue-500 bg-blue-500/10') : 'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
+                                                            <div className="flex items-center gap-4">
+                                                                <div className={`w-5 h-5 rounded flex items-center justify-center transition-all border-2 ${isItemSelected(item._id) ? (serviceMode === 'canteen' ? 'bg-orange-500 border-orange-500' : 'bg-blue-600 border-blue-500') : 'border-slate-600'}`}>
+                                                                    {isItemSelected(item._id) && <FaCheck className="text-white text-[10px]" />}
+                                                                </div>
+                                                                <img src={getFullImageUrl(item.imageUrl)} alt={item.name} className="w-10 h-10 object-cover rounded-lg border border-slate-600" />
+                                                                <span className="text-sm font-bold text-white">{item.name}</span>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-[10px] line-through text-slate-500 font-bold">₹{item.price}</p>
+                                                                <p className="text-sm text-green-400 font-black">₹{getDiscountedPrice(item.price)}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
-                            {/* ACTIVE OFFERS LIST */}
+                            {/* ACTIVE OFFERS */}
                             <div>
                                 <h3 className="text-2xl font-black text-white mb-6 flex items-center gap-3">
-                                    <FaTag className="text-orange-500" /> Active Campaigns
+                                    <FaTag className={serviceMode === 'canteen' ? 'text-orange-500' : 'text-blue-500'} /> Active {serviceMode} Campaigns
                                 </h3>
                                 <div className="grid sm:grid-cols-2 gap-5">
                                     {offers.map((offer) => {
                                         const expired = isOfferExpired(offer.endDate, offer.endTime);
-                                        
                                         return (
-                                            <div 
-                                                key={offer._id} 
-                                                onClick={() => openOfferForEdit(offer)}
-                                                className={`bg-slate-800 border-t-4 rounded-2xl p-6 shadow-2xl relative group overflow-hidden cursor-pointer transition-all hover:-translate-y-1 ${
-                                                    editingId === offer._id 
-                                                    ? 'border-blue-500 ring-2 ring-blue-500/20' 
-                                                    : expired ? 'border-red-600 grayscale-[0.5]' : 'border-orange-500'
-                                                }`}
-                                            >
-                                                {/* ✅ EXPIRED BANNER */}
-                                                {expired && (
-                                                    <div className="absolute top-4 -right-12 bg-red-600 text-white text-[10px] font-black px-12 py-1 rotate-45 shadow-lg z-10 uppercase tracking-tighter border-y border-red-400">
-                                                        Expired
-                                                    </div>
-                                                )}
-
-                                                <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); deleteOffer(offer._id); }}
-                                                        className="text-slate-400 hover:text-red-500 p-2 bg-slate-900 rounded-full transition-all"
-                                                    >
-                                                        <FaTrash size={14}/>
-                                                    </button>
-                                                </div>
-                                                
+                                            <div key={offer._id} onClick={() => openOfferForEdit(offer)} className={`bg-slate-800 border-t-4 rounded-2xl p-6 shadow-2xl relative cursor-pointer transition-all hover:-translate-y-1 ${editingId === offer._id ? 'border-blue-500' : expired ? 'border-red-600 grayscale' : (serviceMode === 'canteen' ? 'border-orange-500' : 'border-blue-500')}`}>
+                                                {expired && <div className="absolute top-4 -right-12 bg-red-600 text-white text-[10px] font-black px-12 py-1 rotate-45 shadow-lg">Expired</div>}
+                                                <div className="absolute top-0 right-0 p-4 opacity-0 hover:opacity-100"><button onClick={(e) => { e.stopPropagation(); deleteOffer(offer._id); }} className="text-slate-400 hover:text-red-500 p-2 bg-slate-900 rounded-full transition-all"><FaTrash size={14}/></button></div>
                                                 <div className="flex flex-col h-full">
-                                                    <h4 className={`text-xl font-black leading-tight mb-2 ${expired ? 'text-slate-400' : 'text-white'}`}>
-                                                        {offer.name}
-                                                    </h4>
-                                                    <span className={`inline-block text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg mb-4 self-start ${expired ? 'bg-slate-600 shadow-slate-900/50' : 'bg-orange-500 shadow-orange-900/50'}`}>
-                                                        {offer.discountPercentage}% DISCOUNT
-                                                    </span>
-                                                    <div className="mt-auto space-y-2 pt-4 border-t border-slate-700">
-                                                        <div className="flex items-center gap-3 text-slate-300 text-xs font-bold">
-                                                            <FaCalendarAlt className={expired ? "text-slate-500" : "text-orange-500"} />
-                                                            <span className={expired ? "text-red-400" : ""}>
-                                                                {offer.startDate?.slice(0, 10)} — {offer.endDate?.slice(0, 10)}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-3 text-slate-300 text-xs font-bold">
-                                                            <FaClock className={expired ? "text-slate-500" : "text-orange-500"} />
-                                                            <span>{offer.startTime} to {offer.endTime}</span>
-                                                        </div>
+                                                    <h4 className={`text-xl font-black leading-tight mb-2 ${expired ? 'text-slate-400' : 'text-white'}`}>{offer.name}</h4>
+                                                    <span className={`inline-block text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg mb-4 self-start ${expired ? 'bg-slate-600' : (serviceMode === 'canteen' ? 'bg-orange-500' : 'bg-blue-600')}`}>{offer.discountPercentage}% OFF</span>
+                                                    <div className="mt-auto space-y-2 pt-4 border-t border-slate-700 text-xs text-slate-300 font-bold">
+                                                        <div className="flex items-center gap-3"><FaCalendarAlt className={serviceMode === 'canteen' ? 'text-orange-500' : 'text-blue-500'} /> {offer.startDate?.slice(0, 10)} — {offer.endDate?.slice(0, 10)}</div>
+                                                        <div className="flex items-center gap-3"><FaClock className={serviceMode === 'canteen' ? 'text-orange-500' : 'text-blue-500'} /> {offer.startTime} to {offer.endTime}</div>
                                                     </div>
                                                 </div>
                                             </div>
                                         );
                                     })}
-                                    
-                                    {offers.length === 0 && (
-                                        <div className="col-span-2 text-center py-16 border-4 border-dashed border-slate-800 rounded-3xl text-slate-600 font-bold italic">
-                                            No active discount campaigns.
-                                        </div>
-                                    )}
+                                    {offers.length === 0 && <div className="col-span-2 text-center py-16 border-4 border-dashed border-slate-800 rounded-3xl text-slate-600 font-bold italic">No active discount campaigns for {serviceMode}.</div>}
                                 </div>
                             </div>
                         </div>
                     </div>
                 </main>
             </div>
-
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 5px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }

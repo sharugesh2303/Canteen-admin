@@ -1,20 +1,15 @@
-/* ==================================
- * FILE: src/pages/AdminMenuFormPage.jsx
- * ================================== */
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 // Icons for Form
-import { FaSave, FaTimes, FaUpload, FaEdit, FaTrashAlt } from 'react-icons/fa';
+import { FaSave, FaTimes, FaUpload, FaEdit, FaTrashAlt, FaPlusCircle, FaUtensils, FaClipboardList, FaChartLine, FaCheckSquare, FaSquare } from 'react-icons/fa';
 // Icons for Layout/Sidebar
-import { LuLogOut, LuMenu, LuX } from 'react-icons/lu';
+import { LuLogOut, LuMenu, LuX, LuStore, LuCoffee } from 'react-icons/lu';
 import { VscFeedback } from "react-icons/vsc";
-import { MdCampaign } from "react-icons/md";
-import { FaPlusCircle, FaUtensils, FaClipboardList, FaChartLine } from 'react-icons/fa';
+import { MdCampaign, MdLocalOffer } from "react-icons/md";
 
 // ================================================
-// 🟢 VERCEL DEPLOYMENT FIX: API URLS
+// 🟢 API CONFIGURATION
 // ================================================
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_ROOT_URL = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace("/api", "") : 'http://localhost:5000');
@@ -26,19 +21,11 @@ const getAdminAuthHeaders = (token, contentType = 'application/json') => ({
     'Content-Type': contentType,
 });
 
-// **🟢 UPDATED HELPER FOR CLOUDINARY COMPATIBILITY**
+// **🟢 UPDATED HELPER FOR CLOUDINARY/LOCAL COMPATIBILITY**
 const getFullImageUrl = (imagePath) => {
     if (!imagePath) return '';
-    
-    // If the path is already a full URL (Cloudinary starts with http/https), return it directly
-    if (imagePath.startsWith('http')) {
-        return imagePath;
-    }
-    
-    // Fallback for old local images still in database
-    if (imagePath.startsWith('/uploads/')) {
-        return `${API_ROOT_URL}${imagePath}`;
-    }
+    if (imagePath.startsWith('http')) return imagePath;
+    if (imagePath.startsWith('/uploads/')) return `${API_ROOT_URL}${imagePath}`;
     return `${API_ROOT_URL}/uploads/${imagePath}`;
 };
 
@@ -83,7 +70,7 @@ const RealTimeClock = () => {
 };
 
 // --- AdminSidebarNav Component ---
-const AdminSidebarNav = ({ onClose }) => {
+const AdminSidebarNav = ({ onClose, serviceMode }) => {
     const navigate = useNavigate();
     const NavItem = ({ to, icon: Icon, name, isActive = false }) => (
         <Link to={to} className="block w-full" onClick={onClose}>
@@ -102,12 +89,13 @@ const AdminSidebarNav = ({ onClose }) => {
             <NavItem to="/menu" icon={FaUtensils} name="Menu Management" isActive={true} />
             <NavItem to="/orders" icon={FaClipboardList} name="Orders" />
             <NavItem to="/revenue" icon={FaChartLine} name="Revenue & Sales" />
+            <NavItem to="/admin/offers" icon={MdLocalOffer} name="Offers & Discounts" />
             <NavItem to="/feedback" icon={VscFeedback} name="Student Feedback" />
             <NavItem to="/advertisement" icon={MdCampaign} name="Ads Management" />
             
             <div className="pt-4 border-t border-slate-700 mt-4">
                 <button 
-                    onClick={() => { navigate('/admin/menu/add'); onClose(); }} 
+                    onClick={() => { navigate(`/admin/menu/add?location=${serviceMode}`); onClose(); }} 
                     className="w-full flex items-center p-3 rounded-lg transition-colors duration-200 space-x-3 text-left bg-green-600 text-white hover:bg-green-700 shadow-md"
                 >
                     <FaPlusCircle size={20} className="flex-shrink-0" />
@@ -141,7 +129,7 @@ const AddSubCategoryModal = ({ onSave, onCancel, isSubmitting }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-40 flex justify-center items-center p-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4">
             <div className="bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 border-orange-500">
                 <h3 className="text-xl font-bold mb-6 text-slate-100">Add New Subcategory</h3>
                 <div className="space-y-4">
@@ -233,7 +221,7 @@ const EditSubCategoryModal = ({ subCategory, onSave, onCancel, isSubmitting }) =
     if (!subCategory) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-40 flex justify-center items-center p-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4">
             <div className="bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 border-blue-500">
                 <h3 className="text-xl font-bold mb-6 text-slate-100">Edit Subcategory</h3>
                 <div className="space-y-4">
@@ -299,15 +287,19 @@ const EditSubCategoryModal = ({ subCategory, onSave, onCancel, isSubmitting }) =
 const AdminMenuFormPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const locationState = useLocation();
     const isEditMode = Boolean(id);
 
+    const queryParams = new URLSearchParams(locationState.search);
+    const defaultLoc = queryParams.get('location') || 'canteen';
+
     const [formData, setFormData] = useState({
-        name: '',
-        price: '',
-        category: 'Snacks',
-        stock: '0',
-        subCategory: ''
+        name: '', price: '', category: 'Snacks', stock: '0', subCategory: '',
+        location: defaultLoc 
     });
+
+    const [syncBoth, setSyncBoth] = useState(false); 
+
     const [subCategories, setSubCategories] = useState([]);
     const [itemImageFile, setItemImageFile] = useState(null);
     const [itemImagePreview, setItemImagePreview] = useState(null);
@@ -318,29 +310,24 @@ const AdminMenuFormPage = () => {
     const [selectedSubCategoryForEdit, setSelectedSubCategoryForEdit] = useState(null);
     const [isSubmittingSubCat, setIsSubmittingSubCat] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [isCanteenOpen, setIsCanteenOpen] = useState(true);
+    const [isStatusOpen, setIsStatusOpen] = useState(true);
 
-    const fetchCanteenStatus = async () => {
+    const fetchStatus = async () => {
         try {
-            const res = await axios.get(`${API_BASE_URL}/canteen-status/public`);
-            setIsCanteenOpen(res.data.isOpen);
-        } catch (err) { console.warn("Could not fetch canteen status."); }
+            const res = await axios.get(`${API_BASE_URL}/status/public?location=${formData.location}`);
+            setIsStatusOpen(res.data.isOpen);
+        } catch (err) { console.warn("Status failed."); }
     };
 
-    const handleToggleCanteen = async () => {
+    const handleToggleStatus = async () => {
         const token = localStorage.getItem('admin_token');
-        if (!token) { navigate('/login'); return; }
         try {
-            const response = await axios.patch(`${API_BASE_URL}/admin/canteen-status`, {}, { 
+            const response = await axios.patch(`${API_BASE_URL}/admin/status-toggle`, { location: formData.location }, { 
                 headers: { 'Authorization': `Bearer ${token}` } 
             });
-            setIsCanteenOpen(response.data.isOpen);
-            alert(`Canteen status set to ${response.data.isOpen ? 'OPEN' : 'CLOSED'}.`);
-        } catch (error) {
-            alert('Failed to update canteen status.');
-        }
+            setIsStatusOpen(response.data.isOpen);
+        } catch (error) { alert('Update failed.'); }
     };
 
     const handleLogout = () => {
@@ -354,17 +341,23 @@ const AdminMenuFormPage = () => {
             if (Array.isArray(response.data)) {
                 setSubCategories(response.data.sort((a, b) => a.name.localeCompare(b.name)));
             }
-        } catch (err) {
-            setError('Failed to load subcategories.');
-        }
+        } catch (err) { console.error('Failed to load subcategories.'); }
     }, []);
 
+    const handleOpenEditSubCategoryModal = () => {
+        const selected = subCategories.find(s => s._id === formData.subCategory);
+        if (selected) {
+            setSelectedSubCategoryForEdit(selected);
+            setIsEditSubCategoryModalVisible(true);
+        }
+    };
+
     useEffect(() => {
-        const fetchPageData = async () => {
+        const load = async () => {
             setLoading(true);
             const token = localStorage.getItem('admin_token');
             if (!token) { navigate('/login'); return; }
-            await Promise.all([fetchCanteenStatus(), fetchSubCategories()]);
+            await Promise.all([fetchStatus(), fetchSubCategories()]);
 
             if (isEditMode) {
                 try {
@@ -373,29 +366,23 @@ const AdminMenuFormPage = () => {
                     });
                     const item = itemResponse.data;
                     setFormData({
-                        id: item._id,
-                        name: item.name,
-                        price: item.price.toString(),
-                        category: item.category,
-                        stock: item.stock.toString(),
-                        subCategory: item.subCategory ? item.subCategory._id : ''
+                        id: item._id, name: item.name, price: item.price.toString(),
+                        category: item.category, stock: item.stock.toString(),
+                        subCategory: item.subCategory ? item.subCategory._id : '',
+                        location: item.location || 'canteen'
                     });
                     setExistingImageUrl(getFullImageUrl(item.imageUrl || ''));
-                } catch (err) {
-                    setError('Failed to load item data.');
-                }
+                } catch (err) { console.error('Failed to load item.'); }
             }
             setLoading(false);
         };
-        fetchPageData();
+        load();
     }, [id, isEditMode, navigate, fetchSubCategories]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-        if (name === 'category' && value !== 'Snacks') {
-            setFormData(prev => ({ ...prev, subCategory: '' }));
-        }
+        if (name === 'category' && value !== 'Snacks') setFormData(prev => ({ ...prev, subCategory: '' }));
     };
 
     const handleItemImageChange = (e) => {
@@ -408,38 +395,60 @@ const AdminMenuFormPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!isEditMode && !itemImageFile) {
-            alert('Please upload an image for the new item.');
-            return;
-        }
-        if (formData.category === 'Snacks' && !formData.subCategory) {
-            alert('Please select or add a subcategory for Snacks.');
-            return;
-        }
-
         setIsSubmitting(true);
-        const itemFormData = new FormData();
-        itemFormData.append('name', formData.name);
-        itemFormData.append('price', formData.price);
-        itemFormData.append('category', formData.category);
-        itemFormData.append('stock', formData.stock);
-        if (formData.subCategory) itemFormData.append('subCategory', formData.subCategory);
-        if (itemImageFile) itemFormData.append('image', itemImageFile);
+        const token = localStorage.getItem('admin_token');
+        const headers = getAdminAuthHeaders(token, 'multipart/form-data');
 
         try {
-            const token = localStorage.getItem('admin_token');
-            const headers = getAdminAuthHeaders(token, 'multipart/form-data');
-            
             if (isEditMode) {
-                await axios.put(`${API_BASE_URL}/menu/${id}`, itemFormData, { headers });
-                alert('Item updated successfully!');
+                // 1. Update the Current Shop Item by ID
+                const itemFormData = new FormData();
+                Object.keys(formData).forEach(key => itemFormData.append(key, formData[key]));
+                if (itemImageFile) itemFormData.append('image', itemImageFile);
+                await axios.put(`${API_BASE_URL}/admin/menu/${id}`, itemFormData, { headers });
+
+                // 2. If Sync is enabled, Upsert (Create/Update) by Name in the Other Location
+                if (syncBoth) {
+                    try {
+                        const otherLocation = formData.location === 'canteen' ? 'cafeteria' : 'canteen';
+                        const syncFormData = new FormData();
+                        syncFormData.append('matchName', formData.name); 
+                        syncFormData.append('price', formData.price);
+                        syncFormData.append('category', formData.category);
+                        syncFormData.append('subCategory', formData.subCategory);
+                        syncFormData.append('location', otherLocation);
+                        syncFormData.append('stock', formData.stock);
+                        
+                        // 🟢 FIX FOR MISSING IMAGE SYNC:
+                        if (itemImageFile) {
+                            // If a NEW file was picked, use that
+                            syncFormData.append('image', itemImageFile);
+                        } else if (existingImageUrl) {
+                            // If NO new file, send the current image URL string
+                            syncFormData.append('existingImage', existingImageUrl);
+                        }
+
+                        // Send to the Upsert endpoint
+                        await axios.patch(`${API_BASE_URL}/admin/menu/menu-sync-edit`, syncFormData, { headers });
+                    } catch (syncErr) {
+                        console.warn("Secondary sync failed, but primary update succeeded.", syncErr);
+                    }
+                }
             } else {
-                await axios.post(`${API_BASE_URL}/menu`, itemFormData, { headers });
-                alert('Item added successfully!');
+                // ADD MODE: Create separate entries in a loop
+                const targetLocations = syncBoth ? ['canteen', 'cafeteria'] : [formData.location];
+                for (const loc of targetLocations) {
+                    const addData = new FormData();
+                    Object.keys(formData).forEach(k => addData.append(k, formData[k]));
+                    addData.set('location', loc);
+                    if (itemImageFile) addData.append('image', itemImageFile);
+                    await axios.post(`${API_BASE_URL}/menu`, addData, { headers });
+                }
             }
+            alert('Items processed successfully!');
             navigate('/menu');
-        } catch (error) {
-            alert(`Failed to save item: ${error.response?.data?.msg || error.message}`);
+        } catch (err) {
+            alert(`Operation failed: ${err.response?.data?.msg || err.message}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -449,76 +458,43 @@ const AdminMenuFormPage = () => {
 
     const handleSaveNewSubCategory = async (name, file) => {
         setIsSubmittingSubCat(true);
-        const subCatFormData = new FormData();
-        subCatFormData.append('name', name);
-        subCatFormData.append('image', file);
+        const data = new FormData();
+        data.append('name', name);
+        data.append('image', file);
         try {
             const token = localStorage.getItem('admin_token');
-            const response = await axios.post(`${API_BASE_URL}/admin/subcategories`, subCatFormData, { 
-                headers: getAdminAuthHeaders(token, 'multipart/form-data') 
-            });
+            const res = await axios.post(`${API_BASE_URL}/admin/subcategories`, data, { headers: getAdminAuthHeaders(token, 'multipart/form-data') });
             await fetchSubCategories();
-            setFormData(prev => ({ ...prev, subCategory: response.data._id }));
+            setFormData(prev => ({ ...prev, subCategory: res.data._id }));
             setIsSubCategoryModalVisible(false);
-        } catch (error) {
-            alert(`Failed: ${error.response?.data?.msg || 'Error'}`);
-        } finally {
-            setIsSubmittingSubCat(false);
-        }
-    };
-
-    const handleOpenEditSubCategoryModal = () => {
-        const selectedSub = subCategories.find(sub => sub._id === formData.subCategory);
-        if (selectedSub) {
-            setSelectedSubCategoryForEdit(selectedSub);
-            setIsEditSubCategoryModalVisible(true);
-        } else {
-            alert("Please select a subcategory to edit.");
-        }
+        } catch (err) { alert('Failed.'); }
+        finally { setIsSubmittingSubCat(false); }
     };
 
     const handleSaveEditedSubCategory = async (subId, newName, file) => {
         setIsSubmittingSubCat(true);
-        const subCatFormData = new FormData();
-        subCatFormData.append('name', newName);
-        if (file) subCatFormData.append('image', file);
-        
+        const data = new FormData();
+        data.append('name', newName);
+        if (file) data.append('image', file);
         try {
             const token = localStorage.getItem('admin_token');
-            await axios.put(`${API_BASE_URL}/admin/subcategories/${subId}`, subCatFormData, { 
-                headers: getAdminAuthHeaders(token, 'multipart/form-data') 
-            });
+            await axios.put(`${API_BASE_URL}/admin/subcategories/${subId}`, data, { headers: getAdminAuthHeaders(token, 'multipart/form-data') });
             await fetchSubCategories();
             setIsEditSubCategoryModalVisible(false);
-            alert('Subcategory updated successfully!');
-        } catch (error) {
-            alert(`Failed: ${error.response?.data?.msg || 'Error'}`);
-        } finally {
-            setIsSubmittingSubCat(false);
-        }
+        } catch (err) { alert('Failed.'); }
+        finally { setIsSubmittingSubCat(false); }
     };
 
     const handleDeleteSubCategory = async () => {
-        const subIdToDelete = formData.subCategory;
-        const selectedSub = subCategories.find(sub => sub._id === subIdToDelete);
-        if (!selectedSub) return;
-
-        if (window.confirm(`Are you sure you want to permanently delete "${selectedSub.name}"?`)) {
-            setIsSubmittingSubCat(true);
-            try {
-                const token = localStorage.getItem('admin_token');
-                await axios.delete(`${API_BASE_URL}/admin/subcategories/${subIdToDelete}`, {
-                    headers: getAdminAuthHeaders(token)
-                });
-                await fetchSubCategories();
-                setFormData(prev => ({ ...prev, subCategory: '' }));
-                alert('Subcategory deleted successfully!');
-            } catch (error) {
-                alert(`Failed: ${error.response?.data?.msg || 'Error'}`);
-            } finally {
-                setIsSubmittingSubCat(false);
-            }
-        }
+        if (!window.confirm(`Delete "${subCategories.find(s => s._id === formData.subCategory)?.name}"?`)) return;
+        setIsSubmittingSubCat(true);
+        try {
+            const token = localStorage.getItem('admin_token');
+            await axios.delete(`${API_BASE_URL}/admin/subcategories/${formData.subCategory}`, { headers: getAdminAuthHeaders(token) });
+            await fetchSubCategories();
+            setFormData(prev => ({ ...prev, subCategory: '' }));
+        } catch (err) { alert('Failed.'); }
+        finally { setIsSubmittingSubCat(false); }
     };
 
     if (loading) return (
@@ -527,7 +503,7 @@ const AdminMenuFormPage = () => {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span className="ml-4 text-slate-400">Loading Form...</span>
+            <span className="ml-4 text-slate-400 font-bold">Loading Form...</span>
         </div>
     );
 
@@ -535,32 +511,30 @@ const AdminMenuFormPage = () => {
         <div className="min-h-screen bg-slate-900 font-sans relative flex">
             <SparkleOverlay />
             
-            {/* Mobile Drawer */}
             <div className={`fixed inset-0 z-40 md:hidden transition-all duration-300 ${isDrawerOpen ? 'bg-black/50 pointer-events-auto' : 'bg-black/0 pointer-events-none'}`} onClick={() => setIsDrawerOpen(false)}>
                 <div className={`absolute left-0 top-0 w-64 h-full bg-slate-800 shadow-2xl transition-transform duration-300 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`} onClick={e => e.stopPropagation()}>
                     <div className="p-4 flex justify-between items-center border-b border-slate-700">
                         <h3 className="text-xl font-bold text-orange-400">Admin Menu</h3>
                         <button onClick={() => setIsDrawerOpen(false)} className="text-slate-400 hover:text-white"><LuX size={24} /></button>
                     </div>
-                    <AdminSidebarNav onClose={() => setIsDrawerOpen(false)} />
+                    <AdminSidebarNav onClose={() => setIsDrawerOpen(false)} serviceMode={formData.location} />
                 </div>
             </div>
 
-            {/* Desktop Sidebar */}
             <aside className="hidden md:block w-64 bg-slate-800 border-r border-slate-700 sticky top-0 h-screen overflow-y-auto flex-shrink-0 z-20">
                 <div className="p-4 py-6"><h1 className="text-2xl font-extrabold text-orange-400">Admin Portal</h1></div>
-                <AdminSidebarNav onClose={() => {}} />
+                <AdminSidebarNav onClose={() => {}} serviceMode={formData.location} />
             </aside>
 
-            <div className="flex-grow relative z-10 min-h-screen">
+            <div className="flex-grow relative z-10 min-h-screen text-white">
                 <header className="bg-gray-900 text-white shadow-lg p-4 flex justify-between items-center sticky top-0 z-30 border-b border-slate-700">
                     <div className="flex items-center space-x-3">
                         <button className="md:hidden text-white" onClick={() => setIsDrawerOpen(true)}><LuMenu size={24} /></button>
-                        <div className="text-xl font-extrabold text-orange-400">JJ Canteen Admin</div>
+                        <div className="text-xl font-extrabold text-orange-400 italic uppercase tracking-tighter">JJ Smart Dashboard</div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        <button onClick={handleToggleCanteen} className={`px-3 py-1 rounded-full font-bold transition-all text-sm ${isCanteenOpen ? 'bg-green-600' : 'bg-red-600'}`}>
-                            {isCanteenOpen ? 'ON' : 'OFF'}
+                        <button onClick={handleToggleStatus} className={`px-3 py-1 rounded-full font-bold transition-all text-xs ${isStatusOpen ? 'bg-green-600' : 'bg-red-600'}`}>
+                            {isStatusOpen ? 'SERVICE ON' : 'SERVICE OFF'}
                         </button>
                         <button onClick={handleLogout} className="bg-red-600 py-2 px-4 rounded-lg flex items-center space-x-2 text-sm">
                             <LuLogOut size={18} /><span>Log Out</span>
@@ -570,51 +544,56 @@ const AdminMenuFormPage = () => {
                 <RealTimeClock />
 
                 <main className="container mx-auto p-4 md:p-8">
-                    <h2 className="text-3xl font-extrabold text-slate-100 mb-6">{isEditMode ? 'Edit Menu Item' : 'Add New Item'}</h2>
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                        <h2 className="text-3xl font-extrabold text-slate-100">{isEditMode ? 'Edit Menu Item' : 'Add New Item'}</h2>
+                        
+                        <div className="flex bg-slate-800 p-1 rounded-full border border-slate-700 shadow-inner">
+                            <button type="button" onClick={() => setFormData(p => ({ ...p, location: 'canteen' }))} className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-black transition-all ${formData.location === 'canteen' ? 'bg-orange-600 text-white' : 'text-slate-400'}`}><LuStore size={14}/> CANTEEN</button>
+                            <button type="button" onClick={() => setFormData(p => ({ ...p, location: 'cafeteria' }))} className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-black transition-all ${formData.location === 'cafeteria' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}><LuCoffee size={14}/> CAFETERIA</button>
+                        </div>
+                    </div>
 
-                    {isSubCategoryModalVisible && <AddSubCategoryModal isSubmitting={isSubmittingSubCat} onSave={handleSaveNewSubCategory} onCancel={() => setIsSubCategoryModalVisible(false)} />}
-                    {isEditSubCategoryModalVisible && <EditSubCategoryModal subCategory={selectedSubCategoryForEdit} isSubmitting={isSubmittingSubCat} onSave={handleSaveEditedSubCategory} onCancel={() => setIsEditSubCategoryModalVisible(false)} />}
+                    <form onSubmit={handleSubmit} className={`bg-slate-800 rounded-xl shadow-2xl p-6 md:p-8 mb-10 border-t-8 max-w-4xl mx-auto transition-colors duration-500 ${formData.location === 'canteen' ? 'border-orange-500' : 'border-blue-500'}`}>
+                        
+                        <div className="flex justify-center mb-10 pb-6 border-b border-slate-700/50">
+                            <button 
+                                type="button"
+                                onClick={() => setSyncBoth(!syncBoth)}
+                                className={`flex flex-col items-center gap-2 px-10 py-4 rounded-2xl border-2 transition-all duration-300 font-black uppercase text-xs tracking-widest ${syncBoth ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl shadow-indigo-500/30 scale-105' : 'bg-slate-900/50 border-slate-700 text-slate-500 hover:text-slate-300'}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    {syncBoth ? <FaCheckSquare size={22}/> : <FaSquare size={22}/>}
+                                    <span className="text-sm font-bold tracking-normal">{isEditMode ? 'Sync Changes to Other Location' : 'Sync to Both Locations'}</span>
+                                </div>
+                                <p className="text-[9px] lowercase font-normal opacity-70">
+                                    {isEditMode ? 'Updates price/image in both locations while keeping revenue separate' : 'Enabling this creates independent stock and revenue for each shop'}
+                                </p>
+                            </button>
+                        </div>
 
-                    <form onSubmit={handleSubmit} className="bg-slate-800 rounded-xl shadow-2xl p-6 md:p-8 mb-10 border-t-4 border-orange-500 max-w-4xl mx-auto">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <label className="block text-slate-300">Item Name
-                                <input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white" />
-                            </label>
-                            <label className="block text-slate-300">Price (₹)
-                                <input type="number" name="price" value={formData.price} onChange={handleChange} required min="0" step="0.01" className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white" />
-                            </label>
+                            <label className="block text-slate-300">Item Name<input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white focus:outline-none focus:ring-1 focus:ring-orange-500" /></label>
+                            <label className="block text-slate-300">Price (₹)<input type="number" name="price" value={formData.price} onChange={handleChange} required min="0" step="0.01" className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white focus:outline-none" /></label>
                             <label className="block text-slate-300">Category
                                 <select name="category" value={formData.category} onChange={handleChange} className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white">
-                                    <option value="Snacks">Snacks</option>
-                                    <option value="Breakfast">Breakfast</option>
-                                    <option value="Lunch">Lunch</option>
-                                    <option value="Drinks">Drinks</option>
-                                    <option value="Stationery">Stationery</option>
-                                    <option value="Essentials">Essentials</option>
+                                    <option value="Snacks">Snacks</option><option value="Breakfast">Breakfast</option><option value="Lunch">Lunch</option><option value="Drinks">Drinks</option><option value="Stationery">Stationery</option><option value="Essentials">Essentials</option>
                                 </select>
                             </label>
-                            <label className="block text-slate-300">Stock Count
-                                <input type="number" name="stock" value={formData.stock} onChange={handleChange} required min="0" className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white" />
-                            </label>
+                            <label className="block text-slate-300">Stock Count<input type="number" name="stock" value={formData.stock} onChange={handleChange} required min="0" className="w-full mt-1 p-2 border border-slate-600 rounded-lg bg-slate-700 text-white" /></label>
 
                             <div className="md:col-span-2">
                                 <label className="block text-slate-300 mb-1">Item Image</label>
                                 <div className="flex items-center gap-4">
-                                    <div className="flex-grow p-4 border-2 border-dashed border-slate-600 rounded-lg text-center cursor-pointer hover:border-orange-500">
+                                    <div className="flex-grow p-4 border-2 border-dashed border-slate-600 rounded-lg text-center cursor-pointer hover:border-orange-500 transition-all">
                                         <input type="file" accept="image/*" className="hidden" onChange={handleItemImageChange} id="item-file-upload"/>
                                         <label htmlFor="item-file-upload" className="cursor-pointer">
-                                            {(!itemImagePreview && !existingImageUrl) ? (
-                                                <>
-                                                    <FaUpload className="mx-auto text-slate-400" size={30} />
-                                                    <p className="text-sm text-slate-400 mt-2">Click to upload item image</p>
-                                                </>
-                                            ) : <p className="text-sm text-blue-400 mt-2">Click to change image</p>}
+                                            {(!itemImagePreview && !existingImageUrl) ? <><FaUpload className="mx-auto text-slate-400" size={30} /><p className="text-sm text-slate-400 mt-2">Upload image</p></> : <p className="text-sm text-blue-400 font-bold mt-2">Change Image</p>}
                                         </label>
                                     </div>
-                                    <div className="flex-shrink-0 w-32 h-32 bg-slate-700 rounded-lg flex items-center justify-center overflow-hidden">
+                                    <div className="flex-shrink-0 w-32 h-32 bg-slate-700 rounded-lg flex items-center justify-center overflow-hidden border-2 border-slate-600">
                                         {itemImagePreview ? <img src={itemImagePreview} alt="Preview" className="w-full h-full object-cover" /> : 
                                          existingImageUrl ? <img src={existingImageUrl} alt="Current" className="w-full h-full object-cover" /> : 
-                                         <span className="text-slate-500 text-xs">No Image</span>}
+                                         <span className="text-slate-500 text-xs font-bold uppercase">No Image</span>}
                                     </div>
                                 </div>
                             </div>
@@ -628,21 +607,25 @@ const AdminMenuFormPage = () => {
                                             {subCategories.map(sub => <option key={sub._id} value={sub._id}>{sub.name}</option>)}
                                         </select>
                                         {!formData.subCategory ? (
-                                            <button type="button" onClick={() => setIsSubCategoryModalVisible(true)} className="bg-orange-500 text-white py-2 px-4 rounded-lg">Add+</button>
+                                            <button type="button" onClick={() => setIsSubCategoryModalVisible(true)} className="bg-orange-500 text-white py-2 px-4 rounded-lg font-bold">Add+</button>
                                         ) : (
                                             <>
-                                                <button type="button" onClick={handleOpenEditSubCategoryModal} className="bg-blue-500 p-2 rounded-lg"><FaEdit size={16}/></button>
-                                                <button type="button" onClick={handleDeleteSubCategory} className="bg-red-600 p-2 rounded-lg"><FaTrashAlt size={16}/></button>
+                                                <button type="button" onClick={handleOpenEditSubCategoryModal} className="bg-blue-500 p-2 rounded-lg hover:bg-blue-400"><FaEdit size={16}/></button>
+                                                <button type="button" onClick={handleDeleteSubCategory} className="bg-red-600 p-2 rounded-lg hover:bg-red-500"><FaTrashAlt size={16}/></button>
                                             </>
                                         )}
                                     </div>
                                 </div>
                             )}
                         </div>
-                        <div className="mt-8 flex justify-end space-x-4">
-                            <button type="button" onClick={handleCancel} className="bg-gray-600 text-white py-3 px-6 rounded-lg"><FaTimes className="mr-2 inline" />Cancel</button>
-                            <button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white py-3 px-8 rounded-lg">
-                                <FaSave className="mr-2 inline" />{isSubmitting ? 'Saving...' : (isEditMode ? 'Update Item' : 'Save Item')}
+                        <div className="mt-8 flex flex-col sm:flex-row justify-end gap-4">
+                            <button type="button" onClick={handleCancel} className="bg-gray-600 text-white py-3 px-6 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-700 font-bold"><FaTimes />Cancel</button>
+                            <button 
+                                type="submit" 
+                                disabled={isSubmitting} 
+                                className={`py-3 px-8 rounded-lg font-bold text-white shadow-xl flex items-center justify-center gap-2 transition-all transform active:scale-95 ${formData.location === 'canteen' ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-900/40' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/40'}`}
+                            >
+                                <FaSave />{isSubmitting ? 'Saving...' : (isEditMode ? 'Update Item' : 'Save Item')}
                             </button>
                         </div>
                     </form>
